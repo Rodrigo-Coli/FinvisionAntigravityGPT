@@ -20,6 +20,14 @@ import { signOutSafely } from '../lib/session';
  *    não depende do resultado da outra;
  *  - a tela diz em que passo está, em vez de um "Iniciando Demo..." fixo.
  */
+
+// 48 caracteres aleatórios + sufixo que atende qualquer regra de senha do Supabase.
+function randomDemoPassword(): string {
+  const bytes = new Uint8Array(24);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('') + 'Aa1!';
+}
 export default function DemoMode() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
@@ -38,10 +46,14 @@ export default function DemoMode() {
 
       // Gerar email randômico para isolar os ambientes de testes de cada visitante
       const demoEmail = `demo+${Date.now()}@finvision.app`;
+      // Senha sorteada a cada visita (antes era uma senha fixa no código: quem
+      // acertasse o e-mail entrava na demonstração de outra pessoa). Ela só é
+      // usada aqui, nos próximos segundos; a sessão fica guardada no aparelho.
+      const demoPassword = randomDemoPassword();
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: demoEmail,
-        password: 'FinvisionDemo2025!'
+        password: demoPassword
       });
 
       if (signUpError || !signUpData.user) {
@@ -53,7 +65,7 @@ export default function DemoMode() {
       if (!signUpData.session) {
         const { error: signInErr } = await supabase.auth.signInWithPassword({
           email: demoEmail,
-          password: 'FinvisionDemo2025!'
+          password: demoPassword
         });
         if (signInErr) {
           setError('Erro ao fazer login no ambiente de demonstração.');

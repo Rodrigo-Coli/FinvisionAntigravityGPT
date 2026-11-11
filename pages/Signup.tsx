@@ -4,7 +4,17 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { UserPlus, Mail, Lock, Loader2, AlertCircle, CheckCircle, Database, Shield, Sparkles } from 'lucide-react';
 import { UserRole } from '../types';
 
+// O app usa rotas com "#": em /#/signup?plan=pro os parâmetros ficam DEPOIS do
+// "#", onde window.location.search não enxerga. Lê dos dois lugares.
+function readUrlParams(): URLSearchParams {
+  const fromHash = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+  const params = new URLSearchParams(fromHash);
+  new URLSearchParams(window.location.search).forEach((value, key) => { if (!params.has(key)) params.set(key, value); });
+  return params;
+}
+
 const Signup: React.FC = () => {
+  const selectedPlan = (readUrlParams().get('plan') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +35,13 @@ const Signup: React.FC = () => {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin }
+        options: {
+          emailRedirectTo: window.location.origin,
+          // Plano escolhido na página de preços (/signup?plan=pro): o banco usa
+          // para decidir em qual plano o teste grátis começa. Sem escolha, o
+          // teste é no plano mais completo.
+          data: selectedPlan ? { selected_plan: selectedPlan } : undefined
+        }
       });
       if (authError) throw authError;
 
@@ -39,7 +55,7 @@ const Signup: React.FC = () => {
         });
 
         // Captura número WhatsApp opcional da URL (?wp=5511...)
-        const urlParams = new URLSearchParams(window.location.search);
+        const urlParams = readUrlParams();
         const wpPhone = urlParams.get('wp');
         if (wpPhone) {
           const cleanPhone = wpPhone.replace(/\D/g, '');
@@ -53,28 +69,10 @@ const Signup: React.FC = () => {
           }
         }
 
-        // Cria assinatura gratuita (plano Starter) automaticamente
-        try {
-          const { data: starterPlan } = await supabase
-            .from('plans')
-            .select('id')
-            .eq('slug', 'starter')
-            .maybeSingle();
-
-          if (starterPlan) {
-            await supabase.from('subscriptions').upsert({
-              user_id: authData.user.id,
-              plan_id: starterPlan.id,
-              status: 'active',
-              billing_period: 'monthly',
-              current_period_start: new Date().toISOString(),
-              current_period_end: null
-            }, { onConflict: 'user_id' });
-          }
-        } catch (subErr) {
-          // Não bloqueia o cadastro se a assinatura falhar
-          console.warn('Não foi possível criar assinatura Starter:', subErr);
-        }
+        // A assinatura (teste grátis) é criada pelo próprio banco no momento do
+        // cadastro (função handle_new_user). O trecho que existia aqui tentava
+        // gravar um plano gratuito por cima, mas o banco sempre recusou — a
+        // tabela de assinaturas é somente leitura para o usuário.
 
         if (!authData.session) setNeedsConfirmation(true);
         setSuccess(true);
@@ -103,13 +101,13 @@ const Signup: React.FC = () => {
           <p className="text-slate-400 font-medium text-sm leading-relaxed mb-4">
             {needsConfirmation
               ? <>Enviamos um link de confirmação para <strong className="text-slate-700">{email}</strong>. Acesse seu e-mail e clique no link para ativar sua conta.</>
-              : <>Bem-vindo ao <strong className="text-slate-700">Zyvion</strong>! Sua conta gratuita está pronta.</>
+              : <>Bem-vindo ao <strong className="text-slate-700">Zyvion</strong>! Sua conta está pronta.</>
             }
           </p>
           {!needsConfirmation && (
             <div className="flex items-center gap-2 justify-center mb-6 text-xs text-emerald-600 font-bold bg-emerald-50 rounded-xl px-4 py-2.5 border border-emerald-100">
               <Sparkles size={14} />
-              Plano Gratuito ativado automaticamente
+              Teste grátis ativado — sem cartão
             </div>
           )}
           <Link

@@ -1,7 +1,7 @@
 // Trava de uso de IA por plano — bloqueia quando o usuário estoura o limite
-// mensal configurado no plano (Master Console > Planos), contando pela janela
-// real de cobrança (current_period_start -> current_period_end da assinatura,
-// não mês de calendário), já que o ciclo reinicia a cada troca/renovação de plano.
+// mensal configurado no plano (Master Console > Planos). A janela é sempre de
+// UM MÊS, ancorada no dia em que o ciclo da assinatura começou (não mês de
+// calendário) — ver monthlyUsageWindow em payment/billing-rules.ts.
 //
 // REGRA DE OURO: só bloqueia com CERTEZA. Qualquer erro/instabilidade na própria
 // checagem (banco fora do ar, dado inesperado, etc.) libera o uso — nunca trava
@@ -11,6 +11,8 @@
 // Usado por api/_lib/finvision-chat.ts, whatsapp-webhook.ts, handle-receipt-items.ts,
 // handle-wealth-analysis.ts, categorize-transactions.ts, handle-bank-reconcile.ts,
 // handle-card-reconcile.ts (e futuramente a linha de importação de extrato/fatura).
+
+import { monthlyUsageWindow } from './payment/billing-rules.js';
 
 // Mapa oficial: cada `fn` gravado em ai_usage_logs (ver api/_lib/ai-usage.ts)
 // pertence a UMA categoria de limite (chave dentro de plans.features). Um `fn`
@@ -68,19 +70,30 @@ export interface AiLimitCheck {
   message?: string;
 }
 
-// Início/fim do ciclo de uso atual do usuário. Prioriza a janela real de
-// cobrança (current_period_start/end); cai para "desde a criação da assinatura,
-// por 30 dias" só quando a assinatura ainda não tem período definido (ex: trial
-// antigo, admin_granted sem data de fim).
+// Início/fim do mês de uso atual do usuário, ancorado no início do ciclo da
+// assinatura (ou na criação dela, quando ainda não há ciclo — teste grátis,
+// plano liberado pelo admin). Antes a janela era o período de cobrança inteiro:
+// no plano anual a cota "por mês" valia para o ano todo e, depois da primeira
+// renovação, a janela ficava no passado e o limite deixava de contar.
 function resolveUsageWindow(sub: { current_period_start: string | null; current_period_end: string | null; created_at: string }): { start: string; end: string } {
-  const start = sub.current_period_start || sub.created_at;
-  let end = sub.current_period_end;
-  if (!end) {
-    const d = new Date(start);
-    d.setMonth(d.getMonth() + 1);
-    end = d.toISOString();
+  return monthlyUsageWindow(sub.current_period_start || sub.created_at);
+}
+
+export function isDowngradedSubscription(sub: { status: string; trial_ends_at?: string | null }, now: Date = new Date()): boolean {
+  if (sub.status === 'past_due' || sub.status === 'canceled') return true;
+  return sub.status === 'trialing' && !!sub.trial_ends_at && new Date(sub.trial_ends_at).getTime() < now.getTime();
+}
+
+// Recursos que valem AGORA para a assinatura. null = não deu para saber (libera,
+// pela regra de ouro acima).
+async function resolveEffectiveFeatures(supabase: any, sub: any): Promise<Record<string, any> | null> {
+  if (isDowngradedSubscription(sub)) {
+    const { data: starter, error } = await supabase.from('plans').select('features').eq('slug', 'starter').maybeSingle();
+    if (error) throw error;
+    return starter?.features ?? null;
   }
-  return { start, end };
+  if (!['active', 'trialing', 'admin_granted'].includes(sub.status)) return null;
+  return sub.plans?.features ?? {};
 }
 
 /**
@@ -98,7 +111,7 @@ export async function checkAiActionAllowed(supabase: any, userId: string | null 
   try {
     const { data: sub, error: subErr } = await supabase
       .from('subscriptions')
-      .select('plan_id, status, current_period_start, current_period_end, created_at, plans(features)')
+      .select('plan_id, status, trial_ends_at, current_period_start, current_period_end, created_at, plans(features)')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -106,11 +119,17 @@ export async function checkAiActionAllowed(supabase: any, userId: string | null 
     // Sem assinatura reconhecida aqui: outras camadas do app (login/gate de
     // rota) já cuidam de barrar quem não tem acesso nenhum — esta função só
     // cuida do LIMITE de uso, então na dúvida libera.
-    if (!sub || !['active', 'trialing', 'admin_granted'].includes(sub.status)) {
-      return { allowed: true, reason: 'no_subscription' };
-    }
+    if (!sub) return { allowed: true, reason: 'no_subscription' };
 
-    const rawVal = sub.plans?.features?.[category];
+    // Mesma regra das telas (SubscriptionContext): teste vencido, pagamento
+    // pendente/atrasado além da tolerância ou assinatura cancelada usam os limites
+    // do plano gratuito. Antes, 'past_due' e 'canceled' caíam em "sem assinatura"
+    // e ficavam com IA liberada sem limite, e o teste vencido continuava com os
+    // limites do plano pago.
+    const features = await resolveEffectiveFeatures(supabase, sub);
+    if (!features) return { allowed: true, reason: 'no_subscription' };
+
+    const rawVal = features[category];
     // true / -1 / ausente = sem limite configurado (não bloqueia).
     if (rawVal === undefined || rawVal === null || rawVal === true || rawVal === -1) {
       return { allowed: true, reason: 'unlimited' };

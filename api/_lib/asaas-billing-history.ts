@@ -1,21 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-
-const ASAAS_BASE_URL = process.env.ASAAS_BASE_URL || 'https://sandbox.asaas.com/api/v3';
-const ASAAS_KEY = process.env.ASAAS_SANDBOX_KEY || '';
+import { asaasRequest } from './payment/asaas-gateway.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
-
-async function asaasRequest(path: string, method = 'GET', body?: any) {
-  const res = await fetch(`${ASAAS_BASE_URL}${path}`, {
-    method,
-    headers: { 'access_token': ASAAS_KEY, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return res.json();
-}
 
 export async function handleAsaasBillingHistory(req: any, res: any) {
   // Exige um token de login válido do Supabase — sem isso, qualquer um podia

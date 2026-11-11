@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getPaymentGateway } from './payment/index.js';
 import type { NormalizedWebhookEventType } from './payment/types.js';
+import { computePaidPeriod } from './payment/billing-rules.js';
 import { recordCommissionEvent, reverseCommissionEvent, syncReferralStatusFromSubscription, recordCommissionEventFailure } from './referral.service.js';
 
 const supabase = createClient(
@@ -35,17 +36,64 @@ export async function handleAsaasWebhook(req: any, res: any) {
     }
 
     let subscriptionRow: { id: string } | null = null;
-    const nextStatus = STATUS_MAP[event.type];
+    let nextStatus = STATUS_MAP[event.type];
     if (nextStatus) {
-      const { data } = await supabase.from('subscriptions')
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+      const { data: current } = await supabase.from('subscriptions')
+        .select('id, status, billing_period, current_period_start, current_period_end, metadata')
         .eq('asaas_subscription_id', event.gatewaySubscriptionId)
-        .select('id')
         .maybeSingle();
-      subscriptionRow = data;
-      if (subscriptionRow) {
-        await syncReferralStatusFromSubscription(subscriptionRow.id, nextStatus)
-          .catch(err => console.error('[referral] syncReferralStatusFromSubscription:', err));
+
+      if (!current) {
+        // Aviso de uma assinatura que não é (mais) a atual de ninguém — por exemplo
+        // uma que foi substituída numa troca de plano. Fica só o registro.
+        console.warn(`[asaas-webhook] ${event.type} de assinatura desconhecida: ${event.gatewaySubscriptionId}`);
+      } else {
+        const now = new Date();
+        const metadata: Record<string, any> = { ...(current.metadata || {}) };
+        const patch: Record<string, any> = { updated_at: now.toISOString() };
+
+        if (event.type === 'payment_confirmed') {
+          // Pagamento confirmado: além de ativar, AVANÇA o período pago. O período
+          // da cobrança vem na própria referência (userId:plano:periodo:cupom) e
+          // cai para o que está gravado na assinatura.
+          const refPeriod = event.externalReference?.split(':')[2];
+          const paidPeriod = computePaidPeriod({
+            dueDate: event.dueDate,
+            billingPeriod: refPeriod || current.billing_period,
+            currentPeriodStart: current.current_period_start,
+            currentPeriodEnd: current.current_period_end,
+            now,
+          });
+          if (paidPeriod) {
+            patch.current_period_start = paidPeriod.start;
+            patch.current_period_end = paidPeriod.end;
+          }
+          if ('overdue_since' in metadata) {
+            delete metadata.overdue_since;
+            patch.metadata = metadata;
+          }
+        } else if (event.type === 'payment_overdue' && current.status === 'active') {
+          // Quem já era pagante não perde o plano no dia seguinte ao vencimento:
+          // fica ativo, com o atraso anotado, e o cron diário (maintenance.ts)
+          // suspende só depois da tolerância (OVERDUE_GRACE_DAYS) se continuar sem pagar.
+          nextStatus = 'active';
+          if (!metadata.overdue_since) {
+            metadata.overdue_since = now.toISOString();
+            patch.metadata = metadata;
+          }
+        }
+
+        patch.status = nextStatus;
+        const { data } = await supabase.from('subscriptions')
+          .update(patch)
+          .eq('id', current.id)
+          .select('id')
+          .maybeSingle();
+        subscriptionRow = data;
+        if (subscriptionRow) {
+          await syncReferralStatusFromSubscription(subscriptionRow.id, nextStatus)
+            .catch(err => console.error('[referral] syncReferralStatusFromSubscription:', err));
+        }
       }
     }
 

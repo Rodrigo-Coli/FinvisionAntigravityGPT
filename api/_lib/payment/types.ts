@@ -34,6 +34,11 @@ export interface CreateSubscriptionParams {
   creditCard?: CreditCardInput;
   creditCardHolderInfo?: CreditCardHolderInfoInput;
   remoteIp?: string;
+  // Dados do pagador para o cadastro do cliente no gateway. O CPF/CNPJ é
+  // exigido pelo Asaas para emitir cobrança (Pix inclusive).
+  customerName?: string;
+  customerCpfCnpj?: string;
+  customerPhone?: string;
 }
 
 export interface PixData {
@@ -65,12 +70,16 @@ export interface NormalizedWebhookEvent {
   gatewayPaymentId: string | null;
   amountCents: number | null;
   externalReference: string | null;
+  /** Vencimento (YYYY-MM-DD) da cobrança do evento — ancora o período pago. */
+  dueDate: string | null;
 }
 
 export interface PaymentGateway {
   readonly name: string;
   createSubscription(params: CreateSubscriptionParams): Promise<CreateSubscriptionResult>;
   cancelSubscription(gatewaySubscriptionId: string): Promise<void>;
+  /** Valor (em centavos) cobrado a cada ciclo de uma assinatura existente; null se não der para saber. */
+  getSubscriptionValueCents(gatewaySubscriptionId: string): Promise<number | null>;
   normalizeWebhookEvent(payload: any): NormalizedWebhookEvent;
   verifyWebhookAuth(req: any): boolean;
 }

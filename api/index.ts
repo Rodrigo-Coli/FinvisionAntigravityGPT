@@ -32,7 +32,8 @@ import { handleConsortiumSimAi } from './_lib/consortium-sim-ai.js';
 import { handleInvestmentRadar } from './_lib/investment-radar.js';
 
 function setCorsHeaders(res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  // Sem Allow-Credentials: combinado com origem '*' o navegador já ignorava, e a
+  // API não usa cookie (o login vai no cabeçalho Authorization).
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
@@ -42,7 +43,9 @@ export default async function handler(req: any, res: any) {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const url = req.url || '';
+  // Só o caminho decide a rota — nunca o que vem depois do "?". Antes,
+  // /api/qualquer?x=/finvision-chat caía no chat.
+  const url = (req.url || '').split('?')[0];
 
   try {
     // --- AI / Chat ---
