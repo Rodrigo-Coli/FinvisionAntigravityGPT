@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { visibleDeliveryReminders } from '../lib/deliveryReminder';
 import { Profile, DashboardData } from '../types';
 import {
   TrendingUp,
@@ -507,9 +508,9 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       </div>
 
       {/* Lembrete: saldo de entrega de imóvel na planta com forma de pagamento a definir */}
-      {(data.pendingDecisions || []).length > 0 && (
+      {visibleDeliveryReminders(data.pendingDecisions).length > 0 && (
         <div className="w-full space-y-2">
-          {(data.pendingDecisions || []).map(pd => {
+          {visibleDeliveryReminders(data.pendingDecisions).map(pd => {
             const days = pd.deliveryDate
               ? Math.round((new Date(pd.deliveryDate + 'T12:00:00').getTime() - Date.now()) / 86400000)
               : null;
@@ -517,7 +518,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             return (
               <button
                 key={pd.id}
-                onClick={() => navigate('/assets')}
+                onClick={() => navigate('/assets?view=realestate')}
                 className={`w-full text-left rounded-2xl border p-4 flex items-start gap-3 ${urgent ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`}
               >
                 <Bell size={18} className={urgent ? 'text-amber-600 shrink-0 mt-0.5' : 'text-brand-600 shrink-0 mt-0.5'} />

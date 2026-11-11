@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase/client';
 import { getSessionUser } from '../../lib/session';
 import { missedCoupons, cycleOf } from '../../lib/couponForecast';
 import { brokerOf, withBroker, type AccountLite } from '../../lib/assetLocation';
+import SnoozeControl from './SnoozeControl';
 
 // Faixa na tela inicial: juros previstos que passaram da data e não caíram na conta
 // (lib/couponForecast.ts › missedCoupons). Só aparece quando um juro não chega.
@@ -15,7 +16,7 @@ const todayIso = () => {
 
 const MissedCouponBanner: React.FC = () => {
   const navigate = useNavigate();
-  const [items, setItems] = useState<{ name: string; when: string }[]>([]);
+  const [items, setItems] = useState<{ id: string; metadata: any; name: string; when: string }[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,7 +33,10 @@ const MissedCouponBanner: React.FC = () => {
           .eq('is_paid', false)
           .eq('metadata->>expected_coupon_state', 'open');
         if (error || cancelled) return;
-        const missed = missedCoupons((data || []) as any[], todayIso());
+        // Juros que a pessoa mandou ocultar por X dias ficam fora do aviso até lá.
+        const now = Date.now();
+        const missed = missedCoupons((data || []) as any[], todayIso())
+          .filter((f: any) => !(f.metadata?.missed_snoozed_until && Date.parse(f.metadata.missed_snoozed_until) > now));
         // Corretora/banco de cada título, para não precisar procurar onde está.
         const brokerByAsset = new Map<string, string>();
         if (missed.length) {
@@ -47,6 +51,8 @@ const MissedCouponBanner: React.FC = () => {
         }
         if (cancelled) return;
         setItems(missed.map((f: any) => ({
+          id: String(f.id),
+          metadata: f.metadata || {},
           name: withBroker(
             String(f.description || 'Investimento').replace(/^Juros previstos - /, '').replace(/ \(estimado\)$/, ''),
             brokerByAsset.get(String(f.metadata?.expected_coupon_asset_id || '')) || ''
@@ -58,13 +64,23 @@ const MissedCouponBanner: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
+  // Oculta da tela inicial pelos dias escolhidos (marca cada juro em atraso).
+  const snooze = async (days: number) => {
+    if (!supabase) return;
+    const until = new Date(Date.now() + days * 86400000).toISOString();
+    await Promise.all(items.map(i =>
+      supabase!.from('transactions').update({ metadata: { ...(i.metadata || {}), missed_snoozed_until: until } }).eq('id', i.id)
+    ));
+    setItems([]);
+  };
+
   if (items.length === 0) return null;
 
   return (
+    <div className="w-full bg-amber-500 text-white rounded-[24px] shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-colors" data-testid="missed-coupon-banner">
     <button
       onClick={() => navigate('/assets?view=investments&juros=atrasados')}
-      className="w-full text-left bg-amber-500 text-white rounded-[24px] p-4 sm:p-5 shadow-lg shadow-amber-500/20 flex items-center gap-4 hover:bg-amber-600 transition-colors"
-      data-testid="missed-coupon-banner"
+      className="w-full text-left p-4 sm:p-5 pb-2 sm:pb-2 flex items-center gap-4"
     >
       <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0"><AlertTriangle size={22} /></div>
       <div className="flex-1 min-w-0">
@@ -76,6 +92,10 @@ const MissedCouponBanner: React.FC = () => {
       </div>
       <ChevronRight size={20} className="shrink-0" />
     </button>
+    <div className="px-4 sm:px-5 pb-3 flex justify-end">
+      <SnoozeControl onSnooze={snooze} testId="coupon-snooze" />
+    </div>
+    </div>
   );
 };
 

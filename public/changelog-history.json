@@ -1,5 +1,36 @@
 [
   {
+    "version": "2026.11.10.2314",
+    "title": "Avisos da tela inicial: ocultar por quantos dias quiser e lembrete do imóvel só perto da entrega",
+    "date": "10/11/2026",
+    "benefits": [
+      {
+        "title": "Ocultar avisos pelo tempo que você escolher",
+        "desc": "Os avisos vermelho (Radar urgente) e laranja (juros não recebidos) ganharam o botão \"Ocultar\": escolha 7, 15 ou 30 dias, ou digite qualquer número de dias. Passado o prazo, o aviso volta se o problema continuar. No Radar, o \"Já vi\" também deixa escolher os dias.",
+        "type": "novidade"
+      },
+      {
+        "title": "Juros em aberto aparecem na hora",
+        "desc": "Ao tocar no aviso laranja, o quadro \"Juros previstos\" abre já com os juros não recebidos, mesmo quando o servidor demora para responder. Antes ele podia ficar em branco.",
+        "type": "correcao"
+      },
+      {
+        "title": "Lembrete do imóvel na planta no momento certo",
+        "desc": "\"Saldo de entrega a definir\" só aparece a partir de 6 meses antes da entrega, quando é hora de decidir entre financiamento, à vista etc. Tocar nele abre Ativos Imobiliários.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "components/home/SnoozeControl.tsx: controle 'Ocultar por X dias' (7/15/30 ou 1–365 livre)",
+      "components/home/RadarUrgentBanner.tsx: ocultar grava investment_radar.dismissed_until dos urgentes exibidos",
+      "components/home/MissedCouponBanner.tsx: ocultar grava metadata.missed_snoozed_until em cada juro em atraso (preserva o resto do metadata); faixa ignora os ocultados até o prazo",
+      "components/assets/CouponForecastPanel.tsx: lê os previstos em aberto direto do banco antes da sincronização (coupon_sync); se o servidor falhar, mantém a lista",
+      "components/assets/InvestmentRadarPanel.tsx: 'Já vi' com escolha de dias",
+      "lib/deliveryReminder.ts + pages/Home.tsx: lembrete de saldo de entrega só a partir de 180 dias antes (sem data continua aparecendo); link para Ativos Imobiliários",
+      "tests: faixa laranja (ocultar/prazo), ocultar do Radar, lembrete de entrega"
+    ]
+  },
+  {
     "version": "2026.11.10.0916",
     "title": "Avisos da tela inicial já abrem filtrados",
     "date": "10/11/2026",

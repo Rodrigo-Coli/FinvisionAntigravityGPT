@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { authHeaders } from '../../lib/apiClient';
+import { getSessionUser } from '../../lib/session';
 import { useToast } from '../../contexts/ToastContext';
 import { FieldLabel } from '../common/HelpTip';
 import { DateInput } from '../common/DateInput';
@@ -65,15 +66,33 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
     return data;
   };
 
+  // Lê os previstos em aberto direto do banco: o quadro aparece na hora (e
+  // mesmo se o servidor demorar), e a sincronização vem logo depois.
+  const loadDirect = async (): Promise<Forecast[] | null> => {
+    try {
+      if (!supabase) return null;
+      const user = await getSessionUser(supabase);
+      if (!user) return null;
+      const { data, error } = await supabase.from('transactions')
+        .select('id, date, amount, account_id, account_name, description, metadata')
+        .eq('user_id', user.id).eq('is_deleted', false).eq('is_paid', false)
+        .eq('metadata->>expected_coupon_state', 'open');
+      if (error) return null;
+      return ((data || []) as Forecast[]).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    } catch { return null; }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
+    const direct = await loadDirect();
+    if (direct) { setForecasts(direct); setLoading(false); }
     try {
       const data = await call({ action: 'coupon_sync' });
       setForecasts(Array.isArray(data.forecasts) ? data.forecasts : []);
       if ((data.received || 0) + (data.linked || 0) > 0) onAssetsChanged?.();
     } catch {
-      // Sem servidor (ex.: sem internet): a tela continua igual, sem o quadro.
-      setForecasts([]);
+      // Sem servidor (ex.: sem internet): fica o que veio direto do banco.
+      if (!direct) setForecasts([]);
     } finally {
       setLoading(false);
     }

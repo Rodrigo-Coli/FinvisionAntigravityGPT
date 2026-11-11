@@ -183,6 +183,21 @@ describe('Faixa urgente da tela inicial', () => {
     await mount(<RadarUrgentBanner />);
     expect(text()).toBe('');
   });
+  it('"Ocultar" esconde pelos dias escolhidos (atalho ou número livre)', async () => {
+    await mount(<RadarUrgentBanner />);
+    const open = container.querySelector('[data-testid="radar-snooze"]') as HTMLButtonElement;
+    await act(async () => { open.click(); });
+    const opts = container.querySelector('[data-testid="radar-snooze-options"]')!;
+    expect(opts.textContent).toContain('7 dias');
+    expect(opts.textContent).toContain('30 dias');
+    const input = opts.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('7');
+    const btn15 = [...opts.querySelectorAll('button')].find(b => b.textContent === '15 dias')!;
+    await act(async () => { btn15.click(); });
+    await flush();
+    expect(state.writes).toContain('update investment_radar');
+    expect(text()).toBe('');
+  });
 });
 
 describe('Benefícios e Milhas (tela)', () => {
