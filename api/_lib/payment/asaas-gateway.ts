@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+import { resolveAsaasConfig } from './billing-rules.js';
 import type {
   PaymentGateway,
   CreateSubscriptionParams,
@@ -6,8 +8,9 @@ import type {
   BillingPeriod,
 } from './types.js';
 
-const ASAAS_BASE_URL = process.env.ASAAS_BASE_URL || 'https://sandbox.asaas.com/api/v3';
-const ASAAS_KEY = process.env.ASAAS_SANDBOX_KEY || '';
+// Chave e endereço resolvidos a cada chamada (ver resolveAsaasConfig): aceita
+// ASAAS_API_KEY (nome certo) ou ASAAS_SANDBOX_KEY (legado), e chave de produção
+// fala com a produção mesmo sem ASAAS_BASE_URL.
 
 const ASAAS_CYCLE: Record<BillingPeriod, string> = {
   monthly: 'MONTHLY',
@@ -26,33 +29,83 @@ const ASAAS_STATUS_MAP: Record<string, NormalizedWebhookEvent['type']> = {
   SUBSCRIPTION_DELETED: 'subscription_deleted',
 };
 
-async function asaasRequest(path: string, method = 'GET', body?: any) {
-  const res = await fetch(`${ASAAS_BASE_URL}${path}`, {
+export async function asaasRequest(path: string, method = 'GET', body?: any) {
+  const { apiKey, baseUrl } = resolveAsaasConfig();
+  const res = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: { 'access_token': ASAAS_KEY, 'Content-Type': 'application/json' },
+    headers: { 'access_token': apiKey, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
   return res.json();
 }
 
+// O Asaas devolve { errors: [{ code, description }] }. A descrição já vem em
+// português e é o que o cliente precisa ler ("CPF inválido", "cartão recusado").
+function asaasErrorMessage(response: any, fallback: string): string {
+  const descriptions = Array.isArray(response?.errors)
+    ? response.errors.map((e: any) => e?.description).filter(Boolean)
+    : [];
+  return descriptions.length > 0 ? descriptions.join(' ') : fallback;
+}
+
+function onlyDigits(value: string | undefined | null): string {
+  return String(value || '').replace(/\D/g, '');
+}
+
 export class AsaasGateway implements PaymentGateway {
   readonly name = 'asaas';
 
-  private async findOrCreateCustomer(email: string, externalReference: string): Promise<string> {
-    const existing = await asaasRequest(`/customers?email=${encodeURIComponent(email)}`);
-    if (existing.data?.length > 0) return existing.data[0].id;
+  // O cliente no Asaas precisa de CPF/CNPJ para qualquer cobrança ser emitida.
+  // Antes ele era criado só com o e-mail (e o nome tirado do e-mail): o Pix não
+  // tinha como informar o documento e a cobrança era recusada.
+  private async findOrCreateCustomer(
+    email: string,
+    externalReference: string,
+    info: { name?: string; cpfCnpj?: string; phone?: string } = {}
+  ): Promise<string> {
+    const cpfCnpj = onlyDigits(info.cpfCnpj);
+    const phone = onlyDigits(info.phone);
+    const name = (info.name || '').trim();
 
-    const customer = await asaasRequest('/customers', 'POST', {
-      name: email.split('@')[0],
+    const existing = await asaasRequest(`/customers?email=${encodeURIComponent(email)}`);
+    const found = existing.data?.[0];
+    if (found?.id) {
+      // Completa o cadastro antigo que ficou sem documento/nome — nunca troca
+      // um documento que já está lá.
+      const patch: Record<string, string> = {};
+      if (cpfCnpj && !found.cpfCnpj) patch.cpfCnpj = cpfCnpj;
+      if (name && (!found.name || found.name === email.split('@')[0])) patch.name = name;
+      if (phone && !found.mobilePhone) patch.mobilePhone = phone;
+      if (Object.keys(patch).length > 0) {
+        try {
+          const updated = await asaasRequest(`/customers/${found.id}`, 'PUT', patch);
+          if (!updated?.id) console.error('[asaas] Não foi possível completar o cadastro do cliente:', JSON.stringify(updated));
+        } catch (err) {
+          console.error('[asaas] Erro ao completar o cadastro do cliente:', err);
+        }
+      }
+      return found.id;
+    }
+
+    const payload: Record<string, string> = {
+      name: name || email.split('@')[0],
       email,
       externalReference,
-    });
-    if (!customer.id) throw new Error('Falha ao criar cliente no Asaas: ' + JSON.stringify(customer));
+    };
+    if (cpfCnpj) payload.cpfCnpj = cpfCnpj;
+    if (phone) payload.mobilePhone = phone;
+
+    const customer = await asaasRequest('/customers', 'POST', payload);
+    if (!customer.id) throw new Error(asaasErrorMessage(customer, 'Não foi possível cadastrar o cliente no Asaas.'));
     return customer.id;
   }
 
   async createSubscription(params: CreateSubscriptionParams): Promise<CreateSubscriptionResult> {
-    const gatewayCustomerId = await this.findOrCreateCustomer(params.customerEmail, params.customerExternalReference);
+    const gatewayCustomerId = await this.findOrCreateCustomer(params.customerEmail, params.customerExternalReference, {
+      name: params.customerName || params.creditCardHolderInfo?.name,
+      cpfCnpj: params.customerCpfCnpj || params.creditCardHolderInfo?.cpfCnpj,
+      phone: params.customerPhone || params.creditCardHolderInfo?.phone,
+    });
 
     const subPayload: any = {
       customer: gatewayCustomerId,
@@ -79,7 +132,10 @@ export class AsaasGateway implements PaymentGateway {
     }
 
     const subscription = await asaasRequest('/subscriptions', 'POST', subPayload);
-    if (!subscription.id) throw new Error('Falha ao criar assinatura no Asaas: ' + JSON.stringify(subscription));
+    if (!subscription.id) {
+      console.error('[asaas] Falha ao criar assinatura:', JSON.stringify(subscription));
+      throw new Error(asaasErrorMessage(subscription, 'Não foi possível criar a assinatura no Asaas. Tente novamente.'));
+    }
 
     let pix: CreateSubscriptionResult['pix'] = null;
     if (params.paymentMethod === 'PIX') {
@@ -116,6 +172,15 @@ export class AsaasGateway implements PaymentGateway {
     await asaasRequest(`/subscriptions/${gatewaySubscriptionId}`, 'DELETE');
   }
 
+  async getSubscriptionValueCents(gatewaySubscriptionId: string): Promise<number | null> {
+    try {
+      const sub = await asaasRequest(`/subscriptions/${gatewaySubscriptionId}`);
+      return typeof sub?.value === 'number' ? Math.round(sub.value * 100) : null;
+    } catch {
+      return null;
+    }
+  }
+
   normalizeWebhookEvent(payload: any): NormalizedWebhookEvent {
     const { event, payment, subscription } = payload || {};
     const type = ASAAS_STATUS_MAP[event] || 'ignored';
@@ -125,6 +190,7 @@ export class AsaasGateway implements PaymentGateway {
       gatewayPaymentId: payment?.id || null,
       amountCents: typeof payment?.value === 'number' ? Math.round(payment.value * 100) : null,
       externalReference: payment?.externalReference || null,
+      dueDate: typeof payment?.dueDate === 'string' ? payment.dueDate.slice(0, 10) : null,
     };
   }
 
@@ -136,6 +202,11 @@ export class AsaasGateway implements PaymentGateway {
       return false;
     }
     const token = req.headers['asaas-access-token'];
-    return token === process.env.ASAAS_WEBHOOK_TOKEN;
+    if (typeof token !== 'string') return false;
+    // Comparação em tempo constante: não dá para descobrir o token medindo
+    // quanto tempo a resposta demora.
+    const received = Buffer.from(token);
+    const expected = Buffer.from(process.env.ASAAS_WEBHOOK_TOKEN);
+    return received.length === expected.length && timingSafeEqual(received, expected);
   }
 }

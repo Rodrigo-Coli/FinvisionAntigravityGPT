@@ -54,15 +54,11 @@ export default function AccountSelectionModal() {
     if (!user || !selectedId || !subscription) return;
     setSaving(true);
     try {
-      const updatedMetadata = {
-        ...(subscription.metadata || {}),
-        active_account_id: selectedId
-      };
-
-      const { error } = await supabase
-        .from('subscriptions')
-        .update({ metadata: updatedMetadata })
-        .eq('user_id', user.id);
+      // Grava pela função do banco (set_active_account), que confere se a conta é
+      // mesmo do usuário. Antes isto era um UPDATE direto em `subscriptions`, tabela
+      // que o usuário só pode LER: nada era salvo, sem erro nenhum, e esta tela
+      // voltava a aparecer para sempre — travando quem caía no plano gratuito.
+      const { error } = await supabase.rpc('set_active_account', { p_account_id: selectedId });
 
       if (error) throw error;
       await refreshSubscription();

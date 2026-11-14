@@ -57,3 +57,7 @@ error*.log
 
 # Scripts pessoais de depuração (continham tokens) — não versionar
 scratch/
+
+# Extratos e documentos pessoais usados em testes manuais — nunca versionar
+documentos/
+_importar/

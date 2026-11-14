@@ -1,31 +1,53 @@
 {
-  "version": "2026.11.10.2314",
-  "title": "Avisos da tela inicial: ocultar por quantos dias quiser e lembrete do imóvel só perto da entrega",
-  "date": "10/11/2026",
+  "version": "2026.11.13.2119",
+  "title": "Pagamento do plano mais seguro e claro: CPF no Pix, cupom, troca de plano sem cobrança em dobro",
+  "date": "13/11/2026",
   "benefits": [
     {
-      "title": "Ocultar avisos pelo tempo que você escolher",
-      "desc": "Os avisos vermelho (Radar urgente) e laranja (juros não recebidos) ganharam o botão \"Ocultar\": escolha 7, 15 ou 30 dias, ou digite qualquer número de dias. Passado o prazo, o aviso volta se o problema continuar. No Radar, o \"Já vi\" também deixa escolher os dias.",
-      "type": "novidade"
-    },
-    {
-      "title": "Juros em aberto aparecem na hora",
-      "desc": "Ao tocar no aviso laranja, o quadro \"Juros previstos\" abre já com os juros não recebidos, mesmo quando o servidor demora para responder. Antes ele podia ficar em branco.",
+      "title": "Assinar por Pix agora pede nome e CPF/CNPJ",
+      "desc": "O banco exige o documento para emitir a cobrança. Antes o Pix não tinha onde informar e a cobrança podia ser recusada. O número é conferido na hora, antes de enviar.",
       "type": "correcao"
     },
     {
-      "title": "Lembrete do imóvel na planta no momento certo",
-      "desc": "\"Saldo de entrega a definir\" só aparece a partir de 6 meses antes da entrega, quando é hora de decidir entre financiamento, à vista etc. Tocar nele abre Ativos Imobiliários.",
+      "title": "Trocar de plano sem pagar duas vezes",
+      "desc": "Ao mudar de plano, o que você já pagou e ainda não usou vira dias do plano novo, e a assinatura anterior é encerrada automaticamente. Um Pix gerado e não pago também é substituído pelo novo.",
+      "type": "correcao"
+    },
+    {
+      "title": "Renovação e cancelamento com as datas certas",
+      "desc": "Cada pagamento confirmado passa a estender o seu período. Quem cancela continua com o plano até o fim do que já pagou, e um atraso no pagamento não tira o plano no dia seguinte: há 5 dias de tolerância.",
+      "type": "correcao"
+    },
+    {
+      "title": "Campo de cupom e mensagens mais honestas",
+      "desc": "A tela de pagamento ganhou o campo de cupom de desconto e só diz \"pagamento confirmado\" quando o banco confirma de fato. Se algo der errado, o motivo aparece em português.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Teste grátis no plano que você escolheu",
+      "desc": "Quem se cadastra pela página de preços começa o teste no plano escolhido; sem escolha, no plano mais completo. E quem voltou para o plano gratuito consegue escolher a conta ativa (a escolha não era salva e a tela voltava sempre).",
+      "type": "correcao"
+    },
+    {
+      "title": "Reforço de segurança",
+      "desc": "A demonstração usa uma senha sorteada a cada visita, componentes com falhas conhecidas foram atualizados e funções internas do banco deixaram de aceitar chamadas sem login.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "components/home/SnoozeControl.tsx: controle 'Ocultar por X dias' (7/15/30 ou 1–365 livre)",
-    "components/home/RadarUrgentBanner.tsx: ocultar grava investment_radar.dismissed_until dos urgentes exibidos",
-    "components/home/MissedCouponBanner.tsx: ocultar grava metadata.missed_snoozed_until em cada juro em atraso (preserva o resto do metadata); faixa ignora os ocultados até o prazo",
-    "components/assets/CouponForecastPanel.tsx: lê os previstos em aberto direto do banco antes da sincronização (coupon_sync); se o servidor falhar, mantém a lista",
-    "components/assets/InvestmentRadarPanel.tsx: 'Já vi' com escolha de dias",
-    "lib/deliveryReminder.ts + pages/Home.tsx: lembrete de saldo de entrega só a partir de 180 dias antes (sem data continua aparecendo); link para Ativos Imobiliários",
-    "tests: faixa laranja (ocultar/prazo), ocultar do Radar, lembrete de entrega"
+    "api/_lib/payment/billing-rules.ts (novo): período pago, janela mensal de IA, tolerância de atraso, crédito na troca de plano, CPF/CNPJ, ambiente do Asaas",
+    "api/_lib/asaas-webhook.ts: pagamento confirmado avança current_period_start/end; atraso de pagante mantém 'active' e anota metadata.overdue_since",
+    "api/_lib/maintenance.ts: suspende ('past_due') quem passou de 5 dias de atraso",
+    "api/_lib/asaas-create-subscription.ts: CPF/CNPJ validado e enviado ao cadastro do cliente; grava billing_period; troca de plano com crédito em dias; encerra a assinatura anterior no Asaas; desfaz a cobrança se o banco falhar ao gravar",
+    "api/_lib/payment/asaas-gateway.ts: ASAAS_API_KEY (ASAAS_SANDBOX_KEY segue aceito); chave de produção usa a API de produção; token do webhook comparado em tempo constante; erros do Asaas em português",
+    "api/_lib/payment/billing-rules.ts: ASAAS_AMBIENTE (teste | producao) escolhe entre a chave de testes e a real quando as duas estão configuradas",
+    "api/_lib/ai-usage-limits.ts: janela de uso sempre mensal; teste vencido, pendente e cancelado usam os limites do plano gratuito",
+    "components/subscription/AsaasCheckoutModal.tsx: nome + CPF/CNPJ no Pix, cupom, mensagens conforme a situação real; lib/cpfCnpj.ts",
+    "components/subscription/AccountSelectionModal.tsx: grava a conta ativa pela função set_active_account",
+    "pages/Signup.tsx: envia o plano escolhido (lê ?plan= depois do #); remove gravação que o banco sempre recusava; pages/Landing.tsx: valores de reserva iguais aos do banco",
+    "pages/DemoMode.tsx: senha aleatória por sessão; api/index.ts: rota decidida só pelo caminho; npm audit fix (13 -> 3 avisos em produção)",
+    "supabase: 2026-11-11_security_hardening_2.sql e 2026-11-11_plans_paths_fix.sql (já aplicados) + arquivos _ROLLBACK",
+    "repositório: removidos documentos/ e _importar/ (extratos pessoais)",
+    "tests: billingRules, billingFlow (Asaas e banco simulados), aiUsageLimits"
   ]
 }

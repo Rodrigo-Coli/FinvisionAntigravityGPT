@@ -7,8 +7,7 @@
 // nenhum import de fora de api/_lib/, para não repetir o problema de
 // empacotamento da Vercel que já derrubou a function uma vez.
 
-const ASAAS_BASE_URL = process.env.ASAAS_BASE_URL || 'https://sandbox.asaas.com/api/v3';
-const ASAAS_KEY = process.env.ASAAS_SANDBOX_KEY || '';
+import { resolveAsaasConfig } from './payment/billing-rules.js';
 
 export type PixKeyType = 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP';
 
@@ -92,7 +91,8 @@ export function validatePixKey(raw: string): { valid: boolean; type?: PixKeyType
  * função é exclusiva do pagamento automático (ver autoPayEligiblePayouts).
  */
 export async function createPixTransfer(pixKey: string, pixKeyType: PixKeyType, amountCents: number): Promise<{ success: boolean; transferId?: string; error?: string }> {
-  if (!ASAAS_KEY) return { success: false, error: 'ASAAS_SANDBOX_KEY não configurada.' };
+  const { apiKey: ASAAS_KEY, baseUrl: ASAAS_BASE_URL } = resolveAsaasConfig();
+  if (!ASAAS_KEY) return { success: false, error: 'Chave do Asaas (ASAAS_API_KEY) não configurada.' };
   if (amountCents <= 0) return { success: false, error: 'Valor inválido.' };
 
   try {

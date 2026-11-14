@@ -26,9 +26,12 @@ export default function Landing() {
   // public.plans no Supabase, em tempo real — editar aqui não muda o que é cobrado nem o
   // que aparece quando a busca funciona.
   const [plans, setPlans] = useState<any[]>([
-    { id: '1', name: 'Essencial', slug: 'essential', price_cents: 1990, price_cents_annual: 19900, ai_scans_limit: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
-    { id: '2', name: 'Plus', slug: 'plus', price_cents: 3990, price_cents_annual: 39900, ai_scans_limit: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
-    { id: '3', name: 'Pro', slug: 'pro', price_cents: 5990, price_cents_annual: 59900, ai_scans_limit: 175, features: ['Advisor Patrimonial Inteligente (IA)', '175 Ações IA/mês', 'Inflação Pessoal Exata', 'Gestão Multi-moedas'] }
+    // Mesmos valores gravados em public.plans (conferido em 11/11/2026). Antes este
+    // fallback mostrava anual de R$ 199/399/599 e "60/125/175 ações de IA", que não
+    // batiam com o que é cobrado nem com o que o plano entrega.
+    { id: '1', name: 'Essencial', slug: 'essencial', price_cents: 1990, price_cents_annual: 19104, ai_scans_limit: 0, features: ['Até 3 contas e 2 cartões', 'Importação de extratos (OFX/CSV)', 'Conciliação bancária', 'Relatórios básicos'] },
+    { id: '2', name: 'Plus', slug: 'plus', price_cents: 3990, price_cents_annual: 38304, ai_scans_limit: 15, features: ['Contas e cartões ilimitados', 'Metas e orçamentos', 'Patrimônio e dívidas', 'Leitura de cupons por IA'], featured: true },
+    { id: '3', name: 'Pro', slug: 'pro', price_cents: 5990, price_cents_annual: 57504, ai_scans_limit: -1, features: ['Tudo do Plus', 'IA sem limite mensal', 'Chat IA e diagnóstico patrimonial', 'Lançamentos e avisos por WhatsApp'] }
   ]);
 
   const scrollToSection = (id: string) => {

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, CreditCard, Check, AlertCircle, Copy, ArrowLeft, CheckCircle2, RotateCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase/client';
+import { formatCpfCnpj, isValidCpfCnpj } from '../../lib/cpfCnpj';
 
 interface AsaasCheckoutModalProps {
   plan: {
@@ -20,7 +21,7 @@ interface AsaasCheckoutModalProps {
 
 const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, onClose }) => {
   const { user } = useAuth();
-  const { refreshSubscription } = useSubscription();
+  const { subscription, refreshSubscription } = useSubscription();
   const { toast } = useToast();
 
   // Cartão de crédito recorrente é a forma principal (cobra automaticamente
@@ -29,6 +30,13 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // O que o servidor respondeu ao criar a assinatura: situação, valor de fato
+  // cobrado (com cupom/oferta) e data da primeira cobrança.
+  const [result, setResult] = useState<{ status?: string; totalPrice?: number; nextDueDate?: string; creditDays?: number } | null>(null);
+  const [couponCode, setCouponCode] = useState('');
+  // Pagador do Pix (no cartão esses dados já estão em "Dados de Cobrança").
+  const [pixName, setPixName] = useState('');
+  const [pixCpf, setPixCpf] = useState('');
   const [pixData, setPixData] = useState<{
     qrCode: string;
     copiaECola: string;
@@ -74,11 +82,24 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
       const { data: { session } } = await supabase!.auth.getSession();
       if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
 
+      // CPF/CNPJ é obrigatório para o Asaas emitir a cobrança. Conferir aqui evita
+      // a pessoa preencher tudo e só descobrir o erro depois de enviar.
+      const document = paymentMethod === 'PIX' ? pixCpf : holderCpf;
+      if (!isValidCpfCnpj(document)) {
+        throw new Error('CPF ou CNPJ inválido. Confira os números e tente de novo.');
+      }
+
       const payload: any = {
         planSlug: plan.slug,
         period,
         paymentMethod,
+        customer: {
+          name: (paymentMethod === 'PIX' ? pixName : cardName).trim(),
+          cpfCnpj: document.replace(/\D/g, ''),
+          phone: paymentMethod === 'PIX' ? '' : holderPhone.replace(/\D/g, ''),
+        },
       };
+      if (couponCode.trim()) payload.couponCode = couponCode.trim().toUpperCase();
 
       if (paymentMethod === 'CREDIT_CARD') {
         const [expMonth, expYear] = cardExpiry.split('/');
@@ -118,9 +139,16 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
         throw new Error(data.error || 'Erro ao processar assinatura no Asaas.');
       }
 
+      setResult({ status: data.status, totalPrice: data.totalPrice, nextDueDate: data.nextDueDate, creditDays: data.creditDays });
+
       if (paymentMethod === 'PIX') {
         if (data.pix) {
           setPixData(data.pix);
+        } else if (data.status === 'trialing' || data.status === 'active') {
+          // Primeira cobrança só no futuro (teste em andamento ou crédito do
+          // plano anterior): ainda não existe Pix para pagar hoje.
+          setSuccess(true);
+          await refreshSubscription();
         } else {
           throw new Error('Asaas não retornou os dados do Pix. Tente novamente.');
         }
@@ -139,15 +167,51 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
     setCheckingPix(true);
     try {
       await refreshSubscription();
-      // Let's reload subscription data. If status becomes active, we can show success.
-      const response = await fetch('/api/health'); // Just dummy check, we reload subscription provider
-      window.location.reload(); // Quick reset of state so Context catches 'active'
+      window.location.reload(); // Recarrega para todas as telas pegarem o plano já ativo
     } catch (err) {
       console.error(err);
     } finally {
       setCheckingPix(false);
     }
   };
+
+  // Depois de criar a assinatura no cartão, a confirmação do pagamento chega do
+  // Asaas em instantes. Confere algumas vezes para a tela dizer a verdade: só
+  // mostra "confirmado" quando o plano está ativo de fato.
+  const awaitingConfirmation = success && result?.status !== 'trialing' && subscription?.status !== 'active';
+  useEffect(() => {
+    if (!awaitingConfirmation) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      refreshSubscription();
+      if (tries >= 8) clearInterval(timer);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [awaitingConfirmation]);
+
+  const chargedLabel = `R$ ${(result?.totalPrice ?? priceInReais).toFixed(2).replace('.', ',')}`;
+  const firstChargeLabel = result?.nextDueDate ? result.nextDueDate.split('-').reverse().join('/') : '';
+  let successTitle = 'Assinatura criada!';
+  let successText: React.ReactNode = (
+    <>Estamos confirmando o pagamento de {chargedLabel} com a operadora do cartão. O plano <strong>{plan.name}</strong> é liberado assim que a confirmação chegar — normalmente em instantes.</>
+  );
+  if (result?.status === 'trialing') {
+    successTitle = 'Assinatura agendada!';
+    successText = (
+      <>Seu teste grátis continua normalmente. A primeira cobrança de {chargedLabel} do plano <strong>{plan.name}</strong> será em {firstChargeLabel}. Você pode cancelar antes disso sem pagar nada.</>
+    );
+  } else if (result?.status === 'active' && (result?.creditDays ?? 0) > 0) {
+    successTitle = 'Plano alterado!';
+    successText = (
+      <>Você já está no plano <strong>{plan.name}</strong>. O que você tinha pago no plano anterior virou {result.creditDays} dia{result.creditDays === 1 ? '' : 's'} de crédito: a primeira cobrança de {chargedLabel} será em {firstChargeLabel}.</>
+    );
+  } else if (subscription?.status === 'active') {
+    successTitle = 'Pagamento confirmado!';
+    successText = (
+      <>Sua assinatura do plano <strong>{plan.name}</strong> está ativa e todos os recursos do plano estão liberados.</>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
@@ -173,9 +237,9 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
               <div className="mx-auto w-16 h-16 bg-emerald-50 dark:bg-emerald-950/30 rounded-full flex items-center justify-center text-emerald-500">
                 <CheckCircle2 size={40} />
               </div>
-              <h4 className="text-xl font-black text-slate-900 dark:text-white">Pagamento Confirmado!</h4>
+              <h4 className="text-xl font-black text-slate-900 dark:text-white">{successTitle}</h4>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Parabéns! Sua assinatura do plano <strong>{plan.name}</strong> está ativa. Seus limites foram redefinidos e todos os recursos premium estão liberados.
+                {successText}
               </p>
               <button onClick={onClose} className="px-6 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-600 transition-colors">
                 Ir para o Dashboard
@@ -270,6 +334,33 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm mx-auto">
                     Ao confirmar, geraremos um QR Code Pix. As faturas seguintes serão enviadas automaticamente para o seu e-mail e estarão disponíveis aqui no painel a cada renovação.
                   </p>
+                  <div className="space-y-3 text-left pt-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Nome completo ou razão social</label>
+                      <input
+                        type="text"
+                        required
+                        value={pixName}
+                        onChange={e => setPixName(e.target.value)}
+                        placeholder="Como está no seu documento"
+                        autoComplete="name"
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">CPF / CNPJ</label>
+                      <input
+                        type="text"
+                        required
+                        inputMode="numeric"
+                        value={pixCpf}
+                        onChange={e => setPixCpf(formatCpfCnpj(e.target.value))}
+                        placeholder="000.000.000-00"
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Exigido pelo banco para emitir a cobrança e a nota fiscal.</p>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -340,8 +431,9 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
                         <input
                           type="text"
                           required
+                          inputMode="numeric"
                           value={holderCpf}
-                          onChange={e => setHolderCpf(e.target.value)}
+                          onChange={e => setHolderCpf(formatCpfCnpj(e.target.value))}
                           placeholder="000.000.000-00"
                           className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
                         />
@@ -386,6 +478,19 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
                   </div>
                 </div>
               )}
+
+              {/* Cupom (opcional) — o desconto é conferido e aplicado pelo servidor */}
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Cupom de desconto (opcional)</label>
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="Se tiver um cupom, digite aqui"
+                  autoCapitalize="characters"
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                />
+              </div>
 
               {/* Action buttons */}
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">

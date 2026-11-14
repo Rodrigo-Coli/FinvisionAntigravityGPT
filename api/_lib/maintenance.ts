@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { isGraceExpired } from './payment/billing-rules.js';
+import { syncReferralStatusFromSubscription } from './referral.service.js';
 
 const supabaseAdmin = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
@@ -48,6 +50,39 @@ export async function handleMaintenance(req: any, res: any) {
     results.expireCanceledSubscriptions = error ? { error: error.message } : { downgraded: data?.length || 0 };
   } catch (err: any) {
     results.expireCanceledSubscriptions = { error: err?.message || 'unknown' };
+  }
+
+  // Pagamento atrasado de quem já era pagante: o webhook mantém o plano ativo e
+  // só anota a data do atraso (metadata.overdue_since). Passada a tolerância sem
+  // o pagamento cair, aqui a assinatura vira 'past_due' (plano gratuito até pagar).
+  // Pagou nesse meio tempo → o webhook já apagou a anotação e nada acontece.
+  try {
+    const { data: activeSubs, error } = await supabaseAdmin
+      .from('subscriptions')
+      .select('id, metadata')
+      .eq('status', 'active')
+      .not('metadata', 'is', null);
+    if (error) throw error;
+    const now = new Date();
+    const expired = (activeSubs || []).filter((s: any) => isGraceExpired(s.metadata?.overdue_since, now));
+    let suspended = 0;
+    for (const sub of expired) {
+      const { data: updated } = await supabaseAdmin
+        .from('subscriptions')
+        .update({ status: 'past_due', updated_at: now.toISOString() })
+        .eq('id', sub.id)
+        .eq('status', 'active')
+        .select('id')
+        .maybeSingle();
+      if (updated) {
+        suspended++;
+        await syncReferralStatusFromSubscription(sub.id, 'past_due')
+          .catch(err => console.error('[maintenance] syncReferralStatusFromSubscription:', err));
+      }
+    }
+    results.suspendOverdueSubscriptions = { suspended };
+  } catch (err: any) {
+    results.suspendOverdueSubscriptions = { error: err?.message || 'unknown' };
   }
 
   return res.status(200).json({ success: true, ...results });
