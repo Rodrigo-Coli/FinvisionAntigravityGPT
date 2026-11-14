@@ -1,7 +1,7 @@
 {
-  "version": "2026.11.11.1050",
+  "version": "2026.11.13.2119",
   "title": "Pagamento do plano mais seguro e claro: CPF no Pix, cupom, troca de plano sem cobrança em dobro",
-  "date": "11/11/2026",
+  "date": "13/11/2026",
   "benefits": [
     {
       "title": "Assinar por Pix agora pede nome e CPF/CNPJ",
@@ -40,6 +40,7 @@
     "api/_lib/maintenance.ts: suspende ('past_due') quem passou de 5 dias de atraso",
     "api/_lib/asaas-create-subscription.ts: CPF/CNPJ validado e enviado ao cadastro do cliente; grava billing_period; troca de plano com crédito em dias; encerra a assinatura anterior no Asaas; desfaz a cobrança se o banco falhar ao gravar",
     "api/_lib/payment/asaas-gateway.ts: ASAAS_API_KEY (ASAAS_SANDBOX_KEY segue aceito); chave de produção usa a API de produção; token do webhook comparado em tempo constante; erros do Asaas em português",
+    "api/_lib/payment/billing-rules.ts: ASAAS_AMBIENTE (teste | producao) escolhe entre a chave de testes e a real quando as duas estão configuradas",
     "api/_lib/ai-usage-limits.ts: janela de uso sempre mensal; teste vencido, pendente e cancelado usam os limites do plano gratuito",
     "components/subscription/AsaasCheckoutModal.tsx: nome + CPF/CNPJ no Pix, cupom, mensagens conforme a situação real; lib/cpfCnpj.ts",
     "components/subscription/AccountSelectionModal.tsx: grava a conta ativa pela função set_active_account",

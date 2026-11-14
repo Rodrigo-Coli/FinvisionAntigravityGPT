@@ -217,6 +217,20 @@ describe('ambiente do Asaas', () => {
     expect(c.baseUrl).toBe('https://sandbox.asaas.com/api/v3');
     expect(c.isProduction).toBe(false);
   });
+  it('com as duas chaves guardadas, ASAAS_AMBIENTE escolhe qual vale', () => {
+    const both = { ASAAS_API_KEY: '$aact_prod_real', ASAAS_SANDBOX_KEY: '$aact_hmlg_teste' };
+    expect(resolveAsaasConfig({ ...both, ASAAS_AMBIENTE: 'teste' })).toEqual({ apiKey: '$aact_hmlg_teste', baseUrl: ASAAS_SANDBOX_URL, isProduction: false });
+    expect(resolveAsaasConfig({ ...both, ASAAS_AMBIENTE: 'producao' })).toEqual({ apiKey: '$aact_prod_real', baseUrl: ASAAS_PRODUCTION_URL, isProduction: true });
+    expect(resolveAsaasConfig({ ...both, ASAAS_AMBIENTE: ' Produção ' }).isProduction).toBe(true);
+    expect(resolveAsaasConfig({ ...both, ASAAS_AMBIENTE: 'SANDBOX' }).isProduction).toBe(false);
+  });
+  it('"teste" nunca usa a chave real, e "producao" nunca usa a de teste', () => {
+    expect(resolveAsaasConfig({ ASAAS_API_KEY: '$aact_prod_real', ASAAS_AMBIENTE: 'teste' }).apiKey).toBe('');
+    expect(resolveAsaasConfig({ ASAAS_SANDBOX_KEY: '$aact_hmlg_teste', ASAAS_AMBIENTE: 'producao' }).apiKey).toBe('');
+  });
+  it('valor desconhecido em ASAAS_AMBIENTE cai na regra antiga', () => {
+    expect(resolveAsaasConfig({ ASAAS_SANDBOX_KEY: '$aact_hmlg_teste', ASAAS_AMBIENTE: 'qualquer' })).toEqual({ apiKey: '$aact_hmlg_teste', baseUrl: ASAAS_SANDBOX_URL, isProduction: false });
+  });
   it('sem chave nenhuma não quebra', () => {
     expect(resolveAsaasConfig({})).toEqual({ apiKey: '', baseUrl: ASAAS_SANDBOX_URL, isProduction: false });
   });

@@ -185,6 +185,7 @@ export interface AsaasEnv {
   ASAAS_API_KEY?: string;
   ASAAS_SANDBOX_KEY?: string;
   ASAAS_BASE_URL?: string;
+  ASAAS_AMBIENTE?: string;
 }
 
 export const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
@@ -198,6 +199,18 @@ export const ASAAS_SANDBOX_URL = 'https://sandbox.asaas.com/api/v3';
  * testes, e uma venda real "passaria" sem o dinheiro entrar.
  */
 export function resolveAsaasConfig(env: AsaasEnv = process.env as AsaasEnv): { apiKey: string; baseUrl: string; isProduction: boolean } {
+  // Chave seletora: com as DUAS chaves guardadas na Vercel (ASAAS_API_KEY = conta
+  // real, ASAAS_SANDBOX_KEY = conta de testes), ASAAS_AMBIENTE diz qual está valendo:
+  //   "producao" → cobra de verdade      "teste" → ambiente de testes (dinheiro de mentira)
+  // Sem ASAAS_AMBIENTE vale a regra antiga, logo abaixo.
+  const ambiente = (env.ASAAS_AMBIENTE || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (['producao', 'production', 'prod'].includes(ambiente)) {
+    return { apiKey: (env.ASAAS_API_KEY || '').trim(), baseUrl: ASAAS_PRODUCTION_URL, isProduction: true };
+  }
+  if (['teste', 'testes', 'test', 'sandbox', 'homologacao'].includes(ambiente)) {
+    return { apiKey: (env.ASAAS_SANDBOX_KEY || '').trim(), baseUrl: ASAAS_SANDBOX_URL, isProduction: false };
+  }
+
   const apiKey = (env.ASAAS_API_KEY || env.ASAAS_SANDBOX_KEY || '').trim();
   const explicitUrl = (env.ASAAS_BASE_URL || '').trim().replace(/\/+$/, '');
   const keyIsProduction = apiKey.startsWith('$aact_prod_');
